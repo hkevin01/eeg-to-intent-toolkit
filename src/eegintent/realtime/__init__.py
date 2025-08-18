@@ -10,20 +10,22 @@ Modules
 
 from .buffers import RingBuffer, TimestampedRingBuffer
 from .dsp import AdaptiveNoiseGate, IIRBandpass, NotchFilter, StreamingPipeline
-from .inference import Backend, SlidingWindowPredictor
+from .inference import Backend, PredictorConfig, SlidingWindowPredictor, SmoothingConfig
 from .lsl_client import LSLNotAvailableError, LSLReceiver, LSLStreamInfo
 
 __all__ = [
+    "AdaptiveNoiseGate",
+    "Backend",
+    "IIRBandpass",
+    "LSLNotAvailableError",
     "LSLReceiver",
     "LSLStreamInfo",
-    "LSLNotAvailableError",
-    "RingBuffer",
-    "TimestampedRingBuffer",
-    "IIRBandpass",
     "NotchFilter",
-    "AdaptiveNoiseGate",
-    "StreamingPipeline",
+    "PredictorConfig",
+    "RingBuffer",
     "SlidingWindowPredictor",
-    "Backend",
+    "SmoothingConfig",
+    "StreamingPipeline",
+    "TimestampedRingBuffer",
 ]
 """Realtime modules: LSL client, DSP, inference, app."""

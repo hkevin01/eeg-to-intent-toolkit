@@ -6,6 +6,9 @@ Provides discovery, connect, read, and close APIs for EEG streams.
 from __future__ import annotations
 
 import importlib
+import threading
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -32,6 +35,9 @@ class LSLReceiver:
         self._pylsl: Any = None
         self._inlet: Any = None
         self._info: LSLStreamInfo | None = None
+        self._cb: Callable[[np.ndarray, float], None] | None = None
+        self._thread: threading.Thread | None = None
+        self._running = False
 
     def _ensure_pylsl(self) -> None:
         if self._pylsl is None:
@@ -42,14 +48,10 @@ class LSLReceiver:
                     "pylsl not installed. Install via `pip install pylsl`."
                 ) from exc
 
-    def discover(
-        self, stream_type: str = "EEG", timeout: float = 2.0
-    ) -> list[LSLStreamInfo]:
+    def discover(self, stream_type: str = "EEG", timeout: float = 2.0) -> list[LSLStreamInfo]:
         """Discover available LSL streams of a given type."""
         self._ensure_pylsl()
-        infos = self._pylsl.resolve_stream(
-            "type", stream_type, timeout=timeout
-        )
+        infos = self._pylsl.resolve_stream("type", stream_type, timeout=timeout)
         out: list[LSLStreamInfo] = []
         for info in infos:
             out.append(
@@ -58,14 +60,16 @@ class LSLReceiver:
                     type=info.type(),
                     channel_count=info.channel_count(),
                     nominal_srate=info.nominal_srate(),
-                    source_id=(
-                        info.source_id()
-                        if hasattr(info, "source_id")
-                        else None
-                    ),
+                    source_id=(info.source_id() if hasattr(info, "source_id") else None),
                 )
             )
         return out
+
+    # Backward-compat alias used by dashboard
+    def discover_streams(
+        self, stream_type: str = "EEG", timeout: float = 2.0
+    ) -> list[LSLStreamInfo]:
+        return self.discover(stream_type=stream_type, timeout=timeout)
 
     def connect(
         self,
@@ -75,13 +79,9 @@ class LSLReceiver:
     ) -> LSLStreamInfo:
         """Connect to an LSL stream by name or first available of type."""
         self._ensure_pylsl()
-        infos = self._pylsl.resolve_stream(
-            "type", stream_type, timeout=timeout
-        )
+        infos = self._pylsl.resolve_stream("type", stream_type, timeout=timeout)
         if not infos:
-            msg = (
-                f"No LSL streams found of type={stream_type} within {timeout}s"
-            )
+            msg = f"No LSL streams found of type={stream_type} within {timeout}s"
             raise RuntimeError(msg)
         target = None
         if stream_name is None:
@@ -92,10 +92,7 @@ class LSLReceiver:
                     target = info
                     break
         if target is None:
-            msg = (
-                f"LSL stream named '{stream_name}' not found "
-                f"(type={stream_type})"
-            )
+            msg = f"LSL stream named '{stream_name}' not found " f"(type={stream_type})"
             raise RuntimeError(msg)
         self._inlet = self._pylsl.StreamInlet(target)
         self._info = LSLStreamInfo(
@@ -103,9 +100,7 @@ class LSLReceiver:
             type=target.type(),
             channel_count=target.channel_count(),
             nominal_srate=target.nominal_srate(),
-            source_id=(
-                target.source_id() if hasattr(target, "source_id") else None
-            ),
+            source_id=(target.source_id() if hasattr(target, "source_id") else None),
         )
         return self._info
 
@@ -113,18 +108,18 @@ class LSLReceiver:
     def info(self) -> LSLStreamInfo | None:
         return self._info
 
-    def read(
-        self, n_samples: int, timeout: float = 1.0
-    ) -> tuple[np.ndarray, np.ndarray]:
+    # Convenience method used by dashboard
+    def get_stream_info(self) -> LSLStreamInfo | None:
+        return self._info
+
+    def read(self, n_samples: int, timeout: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
         """Read a batch of samples and timestamps.
 
         Returns a tuple (data, timestamps).
         """
         if self._inlet is None or self._info is None:
             raise RuntimeError("Not connected; call connect() first.")
-        data = np.zeros(
-            (n_samples, self._info.channel_count), dtype=np.float32
-        )
+        data = np.zeros((n_samples, self._info.channel_count), dtype=np.float32)
         ts = np.zeros((n_samples,), dtype=np.float64)
         filled = 0
         while filled < n_samples:
@@ -142,3 +137,35 @@ class LSLReceiver:
     def close(self) -> None:
         self._inlet = None
         self._info = None
+
+    # Callback-based streaming (optional)
+    def set_data_callback(self, cb: Callable[[np.ndarray, float], None]) -> None:
+        """Set a callback: cb(sample: np.ndarray, timestamp: float)."""
+        self._cb = cb
+
+    def _recv_loop(self, poll_timeout: float) -> None:
+        assert self._inlet is not None
+        while self._running:
+            sample, t = self._inlet.pull_sample(timeout=poll_timeout)
+            if sample is None:
+                # Sleep briefly to avoid busy-wait
+                time.sleep(0.001)
+                continue
+            if self._cb is not None:
+                arr = np.asarray(sample, dtype=np.float32)
+                self._cb(arr, float(t))
+
+    def start_receiving(self, poll_timeout: float = 0.05) -> None:
+        if self._inlet is None:
+            raise RuntimeError("Not connected; call connect() first.")
+        if self._running:
+            return
+        self._running = True
+        self._thread = threading.Thread(target=self._recv_loop, args=(poll_timeout,), daemon=True)
+        self._thread.start()
+
+    def stop_receiving(self) -> None:
+        self._running = False
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+            self._thread = None

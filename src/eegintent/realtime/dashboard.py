@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-import streamlit as st
+try:
+    import streamlit as st
+except Exception:  # pragma: no cover - optional at dev time
+    st = None  # type: ignore
 
 if TYPE_CHECKING:
     import plotly.express as px
@@ -20,22 +23,21 @@ else:
         go = None
         px = None
 
-# Try to import our real-time modules
-try:
-    from ..realtime.dsp import create_standard_eeg_pipeline
+# Try to import real-time modules (optional at runtime)
+try:  # pragma: no cover - dashboard is optional
     from ..realtime.inference import (
-        InferenceConfig,
-        RealtimeInferenceEngine,
+        Backend,
+        PredictorConfig,
         SlidingWindowPredictor,
+        SmoothingConfig,
     )
-    from ..realtime.lsl_client import LSLReceiver, create_mock_stream
-except ImportError:
-    LSLReceiver = None
-    create_mock_stream = None
-    create_standard_eeg_pipeline = None
-    RealtimeInferenceEngine = None
-    SlidingWindowPredictor = None
-    InferenceConfig = None
+    from ..realtime.lsl_client import LSLReceiver
+except Exception:  # pragma: no cover
+    Backend = None  # type: ignore
+    PredictorConfig = None  # type: ignore
+    SlidingWindowPredictor = None  # type: ignore
+    SmoothingConfig = None  # type: ignore
+    LSLReceiver = None  # type: ignore
 
 
 def init_session_state():
@@ -56,7 +58,9 @@ def init_session_state():
         st.session_state.timestamps = []
 
 
-def create_eeg_plot(data: np.ndarray, timestamps: np.ndarray, channels: list[str]):
+def create_eeg_plot(
+    data: np.ndarray, timestamps: np.ndarray, channels: list[str]
+):
     """Create real-time EEG plot."""
     if go is None:
         st.error("Plotly not available for plotting")
@@ -177,7 +181,7 @@ def sidebar_controls():
     if st.sidebar.button("Discover Streams"):
         if LSLReceiver is not None:
             receiver = LSLReceiver()
-            streams = receiver.discover_streams()
+            streams = receiver.discover()
 
             if streams:
                 st.sidebar.success(f"Found {len(streams)} streams:")
@@ -198,7 +202,9 @@ def sidebar_controls():
 
     config_expander = st.sidebar.expander("Inference Config")
     with config_expander:
-        window_size = st.number_input("Window Size (ms)", value=1000, min_value=100)
+        window_size = st.number_input(
+            "Window Size (ms)", value=1000, min_value=100
+        )
         step_size = st.number_input("Step Size (ms)", value=100, min_value=50)
         confidence_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.6)
 
@@ -207,7 +213,9 @@ def sidebar_controls():
     with dsp_expander:
         use_bandpass = st.checkbox("Bandpass Filter", value=True)
         low_freq = st.number_input("Low Freq (Hz)", value=1.0, min_value=0.1)
-        high_freq = st.number_input("High Freq (Hz)", value=50.0, min_value=1.0)
+        high_freq = st.number_input(
+            "High Freq (Hz)", value=50.0, min_value=1.0
+        )
         use_notch = st.checkbox("Notch Filter", value=True)
         notch_freq = st.selectbox("Notch Freq", [50, 60], index=0)
         use_car = st.checkbox("Common Average Reference", value=True)
@@ -243,16 +251,16 @@ def main_dashboard():
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        if st.button("🟢 Start Recording", disabled=st.session_state.is_recording):
+        if st.button(
+            "🟢 Start Recording", disabled=st.session_state.is_recording
+        ):
             start_recording(config)
 
     with col2:
-        if st.button("🔴 Stop Recording", disabled=not st.session_state.is_recording):
+        if st.button(
+            "🔴 Stop Recording", disabled=not st.session_state.is_recording
+        ):
             stop_recording()
-
-    with col3:
-        if st.button("🔄 Reset"):
-            reset_session()
 
     # Status display
     if st.session_state.is_recording:
@@ -261,7 +269,9 @@ def main_dashboard():
         st.info("⚫ Not recording")
 
     # Create tabs for different views
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Real-time", "🎯 Predictions", "⏱️ Latency", "📋 Logs"])
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["📊 Real-time", "🎯 Predictions", "⏱️ Latency", "📋 Logs"]
+    )
 
     with tab1:
         st.subheader("Live EEG Signals")
@@ -296,7 +306,9 @@ def main_dashboard():
                 for p in recent_preds:
                     df_data.append(
                         {
-                            "Time": time.strftime("%H:%M:%S", time.localtime(p["timestamp"])),
+                            "Time": time.strftime(
+                                "%H:%M:%S", time.localtime(p["timestamp"])
+                            ),
                             "Class": p["predicted_class"],
                             "Confidence": f"{p['confidence']:.3f}",
                             "Latency (ms)": f"{p['latency_ms']:.1f}",
@@ -321,7 +333,9 @@ def main_dashboard():
             with col2:
                 st.metric("Max Latency", f"{np.max(latencies):.1f} ms")
             with col3:
-                st.metric("Total Predictions", len(st.session_state.predictions))
+                st.metric(
+                    "Total Predictions", len(st.session_state.predictions)
+                )
             with col4:
                 if latencies:
                     start_time = st.session_state.predictions[0]["timestamp"]
@@ -356,7 +370,9 @@ def start_recording(config):
         # Initialize LSL receiver
         if LSLReceiver is not None:
             receiver = LSLReceiver(
-                stream_name=(config["stream_name"] if config["stream_name"] else None)
+                stream_name=(
+                    config["stream_name"] if config["stream_name"] else None
+                )
             )
 
             if receiver.connect():
@@ -396,49 +412,29 @@ def start_recording(config):
 
 def setup_inference(config):
     """Set up inference engine."""
-    try:
-        if InferenceConfig is not None and SlidingWindowPredictor is not None:
-            # Create inference config
-            inf_config = InferenceConfig(
-                window_size_ms=config["window_size"],
-                step_size_ms=config["step_size"],
-                confidence_threshold=config["confidence_threshold"],
-            )
+    # Minimal setup with new predictor API
+    if (
+        SlidingWindowPredictor is None
+        or PredictorConfig is None
+        or Backend is None
+        or SmoothingConfig is None
+    ):
+        return
 
-            # Create predictor
-            predictor = SlidingWindowPredictor(
-                model=config["model_path"],
-                config=inf_config,
-                sampling_rate=250.0,  # Assume 250 Hz
-                n_channels=8,  # Assume 8 channels
-            )
+    try:  # pragma: no cover - UI path
+        backend = Backend.TORCHSCRIPT if str(config["model_path"]).endswith(".pt") else Backend.ONNX
+        cfg = PredictorConfig(
+            window_size=int(config["window_size"]),
+            step_size=int(config["step_size"]),
+            n_channels=8,  # TODO: detect from stream
+            device=None,
+            smoothing=SmoothingConfig(),
+        )
+        predictor = SlidingWindowPredictor(str(config["model_path"]), backend, cfg)
 
-            # Create inference engine
-            if RealtimeInferenceEngine is not None:
-                engine = RealtimeInferenceEngine(predictor)
-
-                # Set prediction callback
-                def on_prediction(pred):
-                    pred_dict = {
-                        "timestamp": pred.timestamp,
-                        "predicted_class": pred.predicted_class,
-                        "confidence": pred.confidence,
-                        "latency_ms": pred.latency_ms,
-                        "probabilities": pred.probabilities.tolist(),
-                    }
-                    st.session_state.predictions.append(pred_dict)
-
-                    # Keep only recent predictions
-                    if len(st.session_state.predictions) > 1000:
-                        predictions = st.session_state.predictions
-                        st.session_state.predictions = predictions[-1000:]
-
-                engine.set_prediction_callback(on_prediction)
-                engine.start_inference()
-
-                st.session_state.inference_engine = engine
-
-    except Exception as e:
+        # For now, just store predictor for polling-based loop (future work)
+        st.session_state.inference_engine = predictor
+    except Exception as e:  # pragma: no cover
         st.error(f"Error setting up inference: {e}")
 
 
@@ -554,6 +550,10 @@ def calibration_wizard():
 # Main app
 def main():
     """Main Streamlit app."""
+    if st is None:
+        print("Streamlit not installed. Please `pip install streamlit` to run the dashboard.")
+        return
+
     st.set_page_config(
         page_title="EEG-to-Intent Dashboard",
         page_icon="🧠",
