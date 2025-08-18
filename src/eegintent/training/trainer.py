@@ -7,14 +7,13 @@ import torch
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from ..models.eegnet import EEGNet
+from ..ssl.pretrained import create_ssl_backbone_factory
 from .lit_module import LitClassifier
 
 # Optional loggers
 try:  # pragma: no cover - optional dependency
-    from pytorch_lightning.loggers import (
-        MLFlowLogger,  # type: ignore
-        WandbLogger,  # type: ignore
-    )
+    from pytorch_lightning.loggers import MLFlowLogger  # type: ignore
+    from pytorch_lightning.loggers import WandbLogger  # type: ignore
 except ImportError:  # pragma: no cover
     MLFlowLogger = None  # type: ignore
     WandbLogger = None  # type: ignore
@@ -26,12 +25,32 @@ def make_trainer(config: dict[str, Any]) -> tuple[pl.Trainer, LitClassifier]:
     lr = config.get("lr", 1e-3)
     use_wandb = bool(config.get("use_wandb", False))
     use_mlflow = bool(config.get("use_mlflow", False))
+    use_ssl_backbone = bool(config.get("use_ssl_backbone", False))
 
     # Allow an external backbone to be supplied; otherwise create
-    # a default EEGNet.
+    # a default EEGNet or SSL backbone.
     backbone = config.get("backbone")
     if backbone is None:
-        backbone = EEGNet(n_channels=n_channels, n_classes=n_classes)
+        if use_ssl_backbone:
+            # Try to create SSL backbone
+            try:
+                ssl_factory_info = create_ssl_backbone_factory()
+                if ssl_factory_info["available_checkpoints"]:
+                    backbone_factory = ssl_factory_info["backbone_factory"]
+                    backbone = backbone_factory(
+                        n_channels=n_channels,
+                        n_classes=n_classes,
+                        ssl_backbone_type=config.get("ssl_backbone_type", "simclr"),
+                    )
+                else:
+                    msg = "No SSL checkpoints found, using random init EEGNet"
+                    print(msg)
+                    backbone = EEGNet(n_channels=n_channels, n_classes=n_classes)
+            except ImportError:
+                print("SSL module not available, using random init EEGNet")
+                backbone = EEGNet(n_channels=n_channels, n_classes=n_classes)
+        else:
+            backbone = EEGNet(n_channels=n_channels, n_classes=n_classes)
 
     lit = LitClassifier(
         backbone,

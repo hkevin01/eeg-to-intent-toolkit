@@ -39,20 +39,20 @@ Overview of current repo: initial scaffold with a modern src layout, CI, Docker,
   - Action items: layer-wise LR decay; freezing policies; adapters.
 
 ### Phase 3 — Personalization + Domain Adaptation
-- [ ] Subject-adaptive normalization (FiLM, conditional BN)
-  - Action items: subject embeddings; per-subject gamma/beta.
+- [x] Subject-adaptive normalization (FiLM, conditional BN)
+  - Action items: subject embeddings; per-subject gamma/beta. (Done)
   - Options: adapters vs LoRA-style low-rank updates.
 - [ ] Few-shot calibration (prototypical networks)
-  - Action items: centroid computation; episodic training.
+  - Action items: centroid computation; episodic training. (Centroids done; episodic training TODO)
   - Options: ProtoMAML vs simple nearest-centroid.
-- [ ] Riemannian alignment baselines
-  - Action items: covariance features; tangent space; CSP+LDA.
+- [x] Riemannian alignment baselines
+  - Action items: covariance features; tangent space; CSP+LDA. (CSP+LDA via pyriemann)
   - Options: pyriemann pipelines vs custom.
 - [ ] Robustness & ablations
-  - Action items: augmentation sweeps; SSL vs scratch; personalization off/on.
+  - Action items: augmentation sweeps; SSL vs scratch; personalization off/on. (Augment + personalization toggles done; SSL vs scratch stub)
   - Options: domain-adversarial training (DANN) add-on.
 - [ ] Reproducibility & artifacts
-  - Action items: version pinning; seeds; artifact registry.
+  - Action items: version pinning; seeds; artifact registry. (Seeds + versions set; artifact registry TODO)
 
 ### Phase 4 — Real-time Inference App
 - [ ] LSL-based receiver and stream buffers

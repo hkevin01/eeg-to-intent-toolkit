@@ -7,6 +7,7 @@ import torch
 
 from ..personalization.film import ConditionalBatchNorm1d, FiLM
 from ..training.trainer import make_dataloaders, make_trainer
+from ..utils.artifacts import get_global_registry
 
 
 @dataclass
@@ -29,7 +30,7 @@ def _maybe_augment(x: torch.Tensor, std: float) -> torch.Tensor:
     return x + std * torch.randn_like(x)
 
 
-def run_experiment(config: dict[str, Any]) -> dict[str, float]:
+def run_experiment(config: dict[str, Any]) -> dict[str, Any]:
     """Run a small ablation experiment on synthetic data.
 
     Config keys supported:
@@ -38,7 +39,8 @@ def run_experiment(config: dict[str, Any]) -> dict[str, float]:
     - use_personalization (bool)
     - personalization_mode ("film"|"cbn")
     - n_subjects (int)
-    - use_ssl_backbone (bool) — placeholder toggle for now
+    - use_ssl_backbone (bool) — loads pre-trained SSL backbone if available
+    - save_artifacts (bool) — whether to save experiment artifacts
     """
     # Parse config
     n_channels = int(config.get("n_channels", 8))
@@ -50,10 +52,20 @@ def run_experiment(config: dict[str, Any]) -> dict[str, float]:
     personalization_mode = str(config.get("personalization_mode", "film")).lower()
     n_subjects = int(config.get("n_subjects", 4))
     use_ssl_backbone = bool(config.get("use_ssl_backbone", False))
+    save_artifacts = bool(config.get("save_artifacts", False))
 
-    # Build base model (SSL toggle is a stub here).
-    # A future version could select a pre-trained encoder when
-    # use_ssl_backbone is True.
+    # Initialize artifact registry if needed
+    if save_artifacts:
+        registry = get_global_registry()
+        experiment_id = registry.create_experiment_id("ablation")
+        registry.save_config(config, experiment_id)
+    else:
+        registry = None
+        experiment_id = None
+
+    # Build base model with optional SSL backbone
+    # When use_ssl_backbone is True, the trainer will attempt to load
+    # a pre-trained SSL encoder from available checkpoints
 
     # Personalization layer (optional)
     personalization_layer = None
@@ -98,4 +110,27 @@ def run_experiment(config: dict[str, Any]) -> dict[str, float]:
     )
 
     trainer.fit(lit, train_loader, val_loader)
-    return {"val_acc": float(lit.val_acc.compute().item())}
+
+    # Collect final metrics
+    final_metrics = {"val_acc": float(lit.val_acc.compute().item())}
+
+    # Save artifacts if requested
+    if save_artifacts and registry and experiment_id:
+        # Save final checkpoint
+        registry.save_checkpoint(lit.backbone, experiment_id)
+
+        # Save final metrics
+        registry.save_metrics(final_metrics, experiment_id)
+
+        # Save experiment summary
+        registry.save_experiment_summary(
+            experiment_id,
+            config,
+            final_metrics,
+            notes="Ablation experiment on synthetic EEG data",
+        )
+
+        # Add experiment ID to results
+        final_metrics["experiment_id"] = experiment_id
+
+    return final_metrics
