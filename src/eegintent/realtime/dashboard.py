@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
+# Make "st" available with permissive typing for static analysis
+st: Any
 try:
-    import streamlit as st
+    import streamlit as st  # type: ignore
 except Exception:  # pragma: no cover - optional at dev time
-    st = None  # type: ignore
+    st = None
+
+# Help static analysis by asserting Any type regardless of runtime value
+st = cast(Any, st)
 
 if TYPE_CHECKING:
     import plotly.express as px
@@ -23,15 +28,15 @@ else:
         go = None
         px = None
 
-# Try to import real-time modules (optional at runtime)
+# Try to import real-time modules (optional at runtime); use relative imports
 try:  # pragma: no cover - dashboard is optional
-    from ..realtime.inference import (
+    from .inference import (
         Backend,
         PredictorConfig,
         SlidingWindowPredictor,
         SmoothingConfig,
     )
-    from ..realtime.lsl_client import LSLReceiver
+    from .lsl_client import LSLReceiver
 except Exception:  # pragma: no cover
     Backend = None  # type: ignore
     PredictorConfig = None  # type: ignore
@@ -203,7 +208,9 @@ def sidebar_controls():
     config_expander = st.sidebar.expander("Inference Config")
     with config_expander:
         window_size = st.number_input(
-            "Window Size (ms)", value=1000, min_value=100
+            "Window Size (ms)",
+            value=1000,
+            min_value=100,
         )
         step_size = st.number_input("Step Size (ms)", value=100, min_value=50)
         confidence_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.6)
@@ -214,7 +221,9 @@ def sidebar_controls():
         use_bandpass = st.checkbox("Bandpass Filter", value=True)
         low_freq = st.number_input("Low Freq (Hz)", value=1.0, min_value=0.1)
         high_freq = st.number_input(
-            "High Freq (Hz)", value=50.0, min_value=1.0
+            "High Freq (Hz)",
+            value=50.0,
+            min_value=1.0,
         )
         use_notch = st.checkbox("Notch Filter", value=True)
         notch_freq = st.selectbox("Notch Freq", [50, 60], index=0)
@@ -289,6 +298,43 @@ def main_dashboard():
                 if fig:
                     eeg_placeholder.plotly_chart(fig, use_container_width=True)
 
+        # Poll predictions once per render when recording
+        if (
+            st.session_state.is_recording
+            and st.session_state.inference_engine is not None
+            and st.session_state.eeg_data
+        ):
+            try:
+                predictor = st.session_state.inference_engine
+                data = np.array(
+                    st.session_state.eeg_data, dtype=np.float32
+                )
+                timestamps = np.array(
+                    st.session_state.timestamps, dtype=np.float64
+                )
+                t0 = time.perf_counter()
+                pred, avg = predictor.process_stream(data, timestamps)
+                dt_ms = (time.perf_counter() - t0) * 1000.0
+                if avg is not None:
+                    conf = float(np.max(avg))
+                    thr = float(config["confidence_threshold"])
+                    if pred is not None and conf >= thr:
+                        ts_val = (
+                            float(timestamps[-1])
+                            if timestamps.size
+                            else float(time.time())
+                        )
+                        st.session_state.predictions.append(
+                            {
+                                "timestamp": ts_val,
+                                "predicted_class": int(pred),
+                                "confidence": conf,
+                                "latency_ms": float(dt_ms),
+                            }
+                        )
+            except Exception as e:
+                st.warning(f"Prediction poller error: {e}")
+
     with tab2:
         st.subheader("Classification Results")
         pred_placeholder = st.empty()
@@ -354,7 +400,7 @@ def main_dashboard():
                     {
                         "Stream Name": stream_info.name,
                         "Channels": stream_info.channel_count,
-                        "Sampling Rate": stream_info.sampling_rate,
+                        "Sampling Rate": stream_info.nominal_srate,
                         "Source ID": stream_info.source_id,
                     }
                 )
@@ -369,40 +415,40 @@ def start_recording(config):
     try:
         # Initialize LSL receiver
         if LSLReceiver is not None:
-            receiver = LSLReceiver(
-                stream_name=(
-                    config["stream_name"] if config["stream_name"] else None
-                )
+            receiver = LSLReceiver()
+
+            # Attempt connection to specific stream or first available of type
+            receiver.connect(
+                stream_name=(config["stream_name"] or None),
+                stream_type="EEG",
+                timeout=5.0,
             )
 
-            if receiver.connect():
-                st.session_state.lsl_receiver = receiver
+            st.session_state.lsl_receiver = receiver
 
-                # Set up data callback
-                def on_data(data, timestamp):
-                    st.session_state.eeg_data.append(data)
-                    st.session_state.timestamps.append(timestamp)
+            # Set up data callback
+            def on_data(data, timestamp):
+                st.session_state.eeg_data.append(data)
+                st.session_state.timestamps.append(timestamp)
 
-                    # Keep only recent data
-                    max_samples = 5000
-                    if len(st.session_state.eeg_data) > max_samples:
-                        eeg_data = st.session_state.eeg_data
-                        timestamps = st.session_state.timestamps
-                        st.session_state.eeg_data = eeg_data[-max_samples:]
-                        st.session_state.timestamps = timestamps[-max_samples:]
+                # Keep only recent data
+                max_samples = 5000
+                if len(st.session_state.eeg_data) > max_samples:
+                    eeg_data = st.session_state.eeg_data
+                    timestamps = st.session_state.timestamps
+                    st.session_state.eeg_data = eeg_data[-max_samples:]
+                    st.session_state.timestamps = timestamps[-max_samples:]
 
-                receiver.set_data_callback(on_data)
-                receiver.start_receiving()
+            receiver.set_data_callback(on_data)
+            receiver.start_receiving()
 
-                # Initialize inference if model provided
-                model_path = config["model_path"]
-                if model_path and Path(model_path).exists():
-                    setup_inference(config)
+            # Initialize inference if model provided
+            model_path = config["model_path"]
+            if model_path and Path(model_path).exists():
+                setup_inference(config)
 
-                st.session_state.is_recording = True
-                st.success("Started recording!")
-            else:
-                st.error("Failed to connect to LSL stream")
+            st.session_state.is_recording = True
+            st.success("Started recording!")
         else:
             st.error("LSL not available")
 
@@ -422,15 +468,32 @@ def setup_inference(config):
         return
 
     try:  # pragma: no cover - UI path
-        backend = Backend.TORCHSCRIPT if str(config["model_path"]).endswith(".pt") else Backend.ONNX
+        backend = (
+            Backend.TORCHSCRIPT
+            if str(config["model_path"]).endswith(".pt")
+            else Backend.ONNX
+        )
+        # Detect channel count from active stream, fallback to 8
+        n_ch = 8
+        if (
+            "lsl_receiver" in st.session_state
+            and st.session_state.lsl_receiver is not None
+        ):
+            info = st.session_state.lsl_receiver.get_stream_info()
+            if info is not None:
+                n_ch = int(info.channel_count)
         cfg = PredictorConfig(
             window_size=int(config["window_size"]),
             step_size=int(config["step_size"]),
-            n_channels=8,  # TODO: detect from stream
+            n_channels=n_ch,
             device=None,
             smoothing=SmoothingConfig(),
         )
-        predictor = SlidingWindowPredictor(str(config["model_path"]), backend, cfg)
+        predictor = SlidingWindowPredictor(
+            str(config["model_path"]),
+            backend,
+            cfg,
+        )
 
         # For now, just store predictor for polling-based loop (future work)
         st.session_state.inference_engine = predictor
@@ -441,11 +504,15 @@ def setup_inference(config):
 def stop_recording():
     """Stop recording and inference."""
     if st.session_state.lsl_receiver:
-        st.session_state.lsl_receiver.disconnect()
+        try:
+            st.session_state.lsl_receiver.stop_receiving()
+        except Exception:
+            pass
+        st.session_state.lsl_receiver.close()
         st.session_state.lsl_receiver = None
 
+    # SlidingWindowPredictor is stateless; just clear reference
     if st.session_state.inference_engine:
-        st.session_state.inference_engine.stop_inference()
         st.session_state.inference_engine = None
 
     st.session_state.is_recording = False
@@ -487,9 +554,14 @@ def calibration_wizard():
                 receiver = LSLReceiver()
                 streams = receiver.discover_streams()
                 if streams:
-                    st.success(f"✓ Found {len(streams)} LSL streams")
+                    st.success(
+                        f"✓ Found {len(streams)} LSL streams"
+                    )
                     for stream in streams:
-                        st.info(f"Stream: {stream.name} ({stream.channel_count} channels)")
+                        st.info(
+                            f"Stream: {stream.name} "
+                            f"({stream.channel_count} channels)"
+                        )
                 else:
                     st.warning("No LSL streams found")
 
@@ -526,11 +598,22 @@ def calibration_wizard():
             ],
         )
 
-        n_trials = st.number_input("Number of trials per class", value=20, min_value=5)
-        trial_duration = st.number_input("Trial duration (seconds)", value=4, min_value=2)
+        n_trials = st.number_input(
+            "Number of trials per class",
+            value=20,
+            min_value=5,
+        )
+        trial_duration = st.number_input(
+            "Trial duration (seconds)",
+            value=4,
+            min_value=2,
+        )
 
         if st.button("Start Calibration"):
-            st.info(f"Calibration for {task_type} would start here...")
+            st.info(
+                f"Calibration for {task_type} would start here "
+                f"with {n_trials} trials of {trial_duration}s each."
+            )
 
     # Step 4: Validation
     with st.expander("Step 4: Validation"):
@@ -551,7 +634,10 @@ def calibration_wizard():
 def main():
     """Main Streamlit app."""
     if st is None:
-        print("Streamlit not installed. Please `pip install streamlit` to run the dashboard.")
+        print(
+            "Streamlit not installed. Please `pip install streamlit` "
+            "to run the dashboard."
+        )
         return
 
     st.set_page_config(
@@ -577,7 +663,8 @@ def main():
             """
         ## Getting Started
 
-        1. **Connect EEG Device**: Start your EEG software and enable LSL streaming
+        1. **Connect EEG Device**: Start your EEG software and enable
+           LSL streaming
         2. **Discover Streams**: Use the sidebar to find available LSL streams
         3. **Load Model**: Provide path to trained ONNX or TorchScript model
         4. **Start Recording**: Begin real-time data acquisition and inference
@@ -591,7 +678,8 @@ def main():
 
         ## Troubleshooting
 
-        - **No streams found**: Check if EEG software is running and LSL is enabled
+        - **No streams found**: Check if EEG software is running
+          and LSL is enabled
         - **Poor predictions**: Run calibration wizard or retrain model
         - **High latency**: Reduce window size or use CPU optimization
         """
