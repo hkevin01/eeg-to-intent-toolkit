@@ -7,23 +7,23 @@ Overview of current repo: initial scaffold with a modern src layout, CI, Docker,
 ## Phases and checklists
 
 ### Phase 1 — Data + Baselines
-- [ ] Implement unified dataset loaders (MOABB, BCI IV 2a/2b, PhysioNet MI)
+- [x] Implement unified dataset loaders (MOABB, BCI IV 2a/2b, PhysioNet MI)
   - Action items: MNE-BIDS support; caching; subject/session splits; channel mapping.
   - Options: Use MOABB pipelines vs custom MNE pipelines.
-- [ ] Preprocessing pipeline (filters, notch, CAR, ICA/ASR, epoching)
+- [x] Preprocessing pipeline (filters, notch, CAR, ICA/ASR, epoching)
   - Action items: config-driven steps; quality metrics; artifact logs.
   - Options: `autoreject` vs manual thresholds; ASR via `mne-icalabel` alternative.
-- [ ] Baseline models (EEGNet, Shallow/Deep ConvNet)
+- [x] Baseline models (EEGNet, Shallow/Deep ConvNet)
   - Action items: implement modules; unit tests for shapes; LightningModule.
   - Options: import from Braindecode for baselines vs own re-implementation.
-- [ ] Training loop (Lightning) with mixed precision and checkpointing
+- [x] Training loop (Lightning) with mixed precision and checkpointing
   - Action items: metrics (balanced acc, kappa, F1); W&B/MLflow toggles.
   - Options: Fabric (custom loops) vs Lightning Trainer.
 - [ ] Evaluation protocols (within-subject, cross-subject, LOSO)
   - Action items: standardized splits; reporting; reproducibility seeds.
 
 ### Phase 2 — Self-Supervised Pretraining
-- [ ] Contrastive learning (SimCLR/InfoNCE) on time-series and spectrograms
+- [x] Contrastive learning (SimCLR/InfoNCE) on time-series and spectrograms
   - Action items: augmentations; projection head; temperature schedule.
   - Options: NT-Xent vs Circle loss; multi-crop variants.
 - [ ] Multi-view learning (TS-TCC/CMC variants)
