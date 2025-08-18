@@ -1,0 +1,49 @@
+{
+  "chat.tools.autoApprove": true,
+  "chat.agent.maxRequests": 100,
+  "github.copilot.chat.alternateGptPrompt.enabled": true,
+  "chat.todoListTool.enabled": true,
+
+  "files.eol": "\n",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  "editor.formatOnSave": true,
+  "editor.rulers": [100],
+  "editor.codeActionsOnSave": {
+  "source.organizeImports": "explicit"
+  },
+
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter"
+  },
+  "python.analysis.typeCheckingMode": "basic",
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.formatting.provider": "none",
+  "python.linting.enabled": true,
+  "ruff.enable": true,
+
+  "[cpp]": {
+    "editor.defaultFormatter": "ms-vscode.cpptools"
+  },
+  "C_Cpp.formatting": "clangFormat",
+  "C_Cpp.clang_format_fallbackStyle": "LLVM",
+  "C_Cpp.codeAnalysis.clangTidy.enabled": true,
+  "C_Cpp.codeAnalysis.clangTidy.checks.enabled": [
+    "bugprone-*",
+    "modernize-*",
+    "performance-*",
+    "readability-*",
+    "cppcoreguidelines-*",
+    "readability-identifier-naming"
+  ],
+
+  "[java]": {
+    "editor.defaultFormatter": "redhat.java"
+  },
+  "java.format.enable": true,
+  "java.compile.nullAnalysis.mode": "automatic",
+  "java.configuration.updateBuildConfiguration": "interactive",
+  "checkstyle.configuration": "/config/checkstyle/checkstyle.xml"
+}

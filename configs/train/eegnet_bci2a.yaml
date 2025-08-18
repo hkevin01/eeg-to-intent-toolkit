@@ -1,0 +1,11 @@
+# Example training config for EEGNet on BCI IV 2a
+seed: 42
+model: eegnet
+optimizer:
+  name: adamw
+  lr: 0.001
+trainer:
+  precision: 16
+  max_epochs: 100
+  gpus: 1
+  batch_size: 64

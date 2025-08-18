@@ -1,0 +1,17 @@
+{
+  "inlineSuggestions": {
+    "enabled": true
+  },
+  "chat": {
+    "style": "concise",
+    "enableContext": true
+  },
+  "project": {
+    "domain": "eeg",
+    "goals": [
+      "Training EEG models",
+      "Self-supervised pretraining",
+      "Real-time inference"
+    ]
+  }
+}

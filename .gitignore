@@ -1,0 +1,52 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/.history/
+.vscode/tmp/
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+.ipynb_checkpoints/
+.mypy_cache/
+.pytype/
+.pytest_cache/
+.coverage*
+htmlcov/
+.cache/
+
+env/
+ENV/
+venv/
+.venv/
+# Don't keep local venvs in repo; use Docker or tools-managed envs
+
+# Data & models
+/data/
+/assets/
+outputs/
+checkpoints/
+exports/
+wandb/
+mlruns/
+
+# Build
+build/
+dist/
+site/
+
+# Logs
+logs/
+
+# Node (if any demos)
+node_modules/
+
+# VS Code
+.vscode/settings.local.json

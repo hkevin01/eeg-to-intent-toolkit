@@ -1,0 +1,11 @@
+# Example data config for BCI Competition IV 2a
+name: bci_iv_2a
+backend: moabb
+path: ./data/bci_iv_2a
+subject_splits: loso
+preprocessing:
+  bandpass: [1, 40]
+  notch: 50
+  reference: CAR
+  epoch_length_s: 2.0
+  epoch_overlap: 0.5

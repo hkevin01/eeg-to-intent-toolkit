@@ -1,0 +1,15 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-python.black-formatter",
+    "charliermarsh.ruff",
+    "ms-vscode.cpptools",
+    "redhat.java",
+    "shengchen.vscode-checkstyle",
+    "esbenp.prettier-vscode",
+    "github.copilot",
+    "github.copilot-chat",
+    "streetsidesoftware.code-spell-checker"
+  ]
+}
