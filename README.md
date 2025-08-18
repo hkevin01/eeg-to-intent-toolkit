@@ -60,3 +60,15 @@ MIT License (see `LICENSE`).
 
 ## Acknowledgments
 - MNE, MOABB, Braindecode, PyTorch Lightning, and the open EEG community.
+
+## Universal Docker Development
+
+Use the Docker Compose stack for a consistent, production-like dev environment.
+
+- Quickstart:
+  - Copy `.env.example` to `.env`
+  - make up
+  - make exec
+  - make test / make precommit
+
+- More details and troubleshooting: see `docs/universal_docker.md`.

@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: eegintent-dev:latest
+    container_name: eegintent-app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PIP_DISABLE_PIP_VERSION_CHECK=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - WANDB_API_KEY=${WANDB_API_KEY:-}
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-}
+    env_file:
+      - .env
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: bash -lc "pip install -e .[dev] && pre-commit install && tail -f /dev/null"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: ["gpu"]
+    ports:
+      - "8888:8888" # notebooks
+      - "8501:8501" # streamlit
+      - "8000:8000" # fastapi
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: eegintent-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-eeg}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eeg}
+      POSTGRES_DB: ${POSTGRES_DB:-eeg}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: eegintent-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+volumes:
+  db_data:
