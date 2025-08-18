@@ -42,17 +42,17 @@ Overview of current repo: initial scaffold with a modern src layout, CI, Docker,
 - [x] Subject-adaptive normalization (FiLM, conditional BN)
   - Action items: subject embeddings; per-subject gamma/beta. (Done)
   - Options: adapters vs LoRA-style low-rank updates.
-- [ ] Few-shot calibration (prototypical networks)
-  - Action items: centroid computation; episodic training. (Centroids done; episodic training TODO)
+- [x] Few-shot calibration (prototypical networks)
+  - Action items: centroid computation; episodic training. (Done - EpisodeSampler, ProtoNetLightning, episodic training functions)
   - Options: ProtoMAML vs simple nearest-centroid.
 - [x] Riemannian alignment baselines
   - Action items: covariance features; tangent space; CSP+LDA. (CSP+LDA via pyriemann)
   - Options: pyriemann pipelines vs custom.
-- [ ] Robustness & ablations
-  - Action items: augmentation sweeps; SSL vs scratch; personalization off/on. (Augment + personalization toggles done; SSL vs scratch stub)
+- [x] Robustness & ablations
+  - Action items: augmentation sweeps; SSL vs scratch; personalization off/on. (Done - SSL backbone loading, augmentation toggles, personalization switches)
   - Options: domain-adversarial training (DANN) add-on.
-- [ ] Reproducibility & artifacts
-  - Action items: version pinning; seeds; artifact registry. (Seeds + versions set; artifact registry TODO)
+- [x] Reproducibility & artifacts
+  - Action items: version pinning; seeds; artifact registry. (Done - comprehensive ArtifactRegistry system with experiment tracking)
 
 ### Phase 4 — Real-time Inference App
 - [ ] LSL-based receiver and stream buffers
