@@ -2,6 +2,7 @@ from typing import Optional
 
 import typer
 
+from .experiments.ablation import run_experiment
 from .utils.logging import setup_logging
 
 app = typer.Typer(help="EEG-to-Intent Toolkit CLI")
@@ -56,6 +57,32 @@ def realtime(
 ):
     """Run real-time inference demo with LSL input and dashboard."""
     typer.echo(f"Realtime: ckpt={checkpoint} stream={lsl_stream}")
+
+
+@app.command()
+def ablate(
+    n_channels: int = typer.Option(8, help="Number of EEG channels"),
+    n_classes: int = typer.Option(2, help="Number of classes"),
+    max_epochs: int = typer.Option(1, help="Max epochs"),
+    batch_size: int = typer.Option(8, help="Batch size"),
+    augment_noise_std: float = typer.Option(0.0, help="Gaussian noise std for augmentation"),
+    use_personalization: bool = typer.Option(False, help="Enable FiLM/CBN personalization"),
+    personalization_mode: str = typer.Option("film", help="film or cbn"),
+    n_subjects: int = typer.Option(4, help="Number of subjects in simulation"),
+):
+    """Run a quick ablation with augmentation/personalization toggles."""
+    cfg = {
+        "n_channels": n_channels,
+        "n_classes": n_classes,
+        "max_epochs": max_epochs,
+        "batch_size": batch_size,
+        "augment_noise_std": augment_noise_std,
+        "use_personalization": use_personalization,
+        "personalization_mode": personalization_mode,
+        "n_subjects": n_subjects,
+    }
+    result = run_experiment(cfg)
+    typer.echo(f"Ablation result: {result}")
 
 
 if __name__ == "__main__":  # pragma: no cover

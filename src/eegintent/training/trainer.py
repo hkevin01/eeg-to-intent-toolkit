@@ -4,7 +4,7 @@ from typing import Dict, Tuple
 
 import pytorch_lightning as pl
 import torch
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from ..models.eegnet import EEGNet
 from .lit_module import LitClassifier
@@ -48,6 +48,31 @@ def make_trainer(config: Dict) -> Tuple[pl.Trainer, LitClassifier]:
     return trainer, lit
 
 
-def make_dataloaders(X: torch.Tensor, y: torch.Tensor, batch_size: int = 8):
-    ds = TensorDataset(X, y)
-    return DataLoader(ds, batch_size=batch_size), DataLoader(ds, batch_size=batch_size)
+class TensorDatasetWithSubject(Dataset[tuple[torch.Tensor, torch.Tensor, torch.Tensor]]):
+    def __init__(self, x: torch.Tensor, y: torch.Tensor, subject_ids: torch.Tensor):
+        assert len(x) == len(y) == len(subject_ids)
+        self.x = x
+        self.y = y
+        self.sids = subject_ids
+
+    def __len__(self) -> int:
+        return len(self.x)
+
+    def __getitem__(self, idx: int):
+        return self.x[idx], self.y[idx], self.sids[idx]
+
+
+def make_dataloaders(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    batch_size: int = 8,
+    subject_ids: torch.Tensor | None = None,
+):
+    if subject_ids is not None:
+        ds: Dataset = TensorDatasetWithSubject(x, y, subject_ids)
+    else:
+        ds = TensorDataset(x, y)
+    return (
+        DataLoader(ds, batch_size=batch_size),
+        DataLoader(ds, batch_size=batch_size),
+    )

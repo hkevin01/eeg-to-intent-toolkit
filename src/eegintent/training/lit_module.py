@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 import pytorch_lightning as pl
 import torch
-import torch.nn as nn
-import torch.optim as optim
+from torch import nn, optim
 from torchmetrics.classification import MulticlassAccuracy
 
 
@@ -24,9 +22,12 @@ class LitClassifier(pl.LightningModule):
         n_classes: int = 2,
         use_wandb: bool = False,
         use_mlflow: bool = False,
-    ):
+        use_personalization: bool = False,
+        personalization_layer: nn.Module | None = None,
+    ) -> None:
         super().__init__()
-        self.save_hyperparameters(ignore=["backbone"])  # avoid pickling the module twice
+        # avoid pickling the module twice
+        self.save_hyperparameters(ignore=["backbone"])
         self.backbone = backbone
         self.lr = lr
         self.criterion = nn.CrossEntropyLoss()
@@ -34,13 +35,26 @@ class LitClassifier(pl.LightningModule):
         self.val_acc = MulticlassAccuracy(num_classes=n_classes)
         self.use_wandb = use_wandb
         self.use_mlflow = use_mlflow
+        self.use_personalization = use_personalization
+        self.personalization_layer = personalization_layer
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, subject_ids: torch.Tensor | None = None) -> torch.Tensor:
+        if (
+            self.use_personalization
+            and self.personalization_layer is not None
+            and subject_ids is not None
+        ):
+            x = self.personalization_layer(x, subject_ids)
         return self.backbone(x)
 
     def training_step(self, batch, batch_idx):  # type: ignore[override]
-        x, y = batch
-        logits = self(x)
+        three = 3
+        if isinstance(batch, (list, tuple)) and len(batch) == three:
+            x, y, sids = batch
+            logits = self(x, sids)
+        else:
+            x, y = batch
+            logits = self(x)
         loss = self.criterion(logits, y)
         preds = logits.argmax(dim=-1)
         acc = self.train_acc(preds, y)
@@ -49,8 +63,13 @@ class LitClassifier(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):  # type: ignore[override]
-        x, y = batch
-        logits = self(x)
+        three = 3
+        if isinstance(batch, (list, tuple)) and len(batch) == three:
+            x, y, sids = batch
+            logits = self(x, sids)
+        else:
+            x, y = batch
+            logits = self(x)
         loss = self.criterion(logits, y)
         preds = logits.argmax(dim=-1)
         acc = self.val_acc(preds, y)
