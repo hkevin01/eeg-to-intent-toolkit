@@ -19,23 +19,23 @@ Overview of current repo: initial scaffold with a modern src layout, CI, Docker,
 - [x] Training loop (Lightning) with mixed precision and checkpointing
   - Action items: metrics (balanced acc, kappa, F1); W&B/MLflow toggles.
   - Options: Fabric (custom loops) vs Lightning Trainer.
-- [ ] Evaluation protocols (within-subject, cross-subject, LOSO)
+- [x] Evaluation protocols (within-subject, cross-subject, LOSO)
   - Action items: standardized splits; reporting; reproducibility seeds.
 
 ### Phase 2 — Self-Supervised Pretraining
 - [x] Contrastive learning (SimCLR/InfoNCE) on time-series and spectrograms
   - Action items: augmentations; projection head; temperature schedule.
   - Options: NT-Xent vs Circle loss; multi-crop variants.
-- [ ] Multi-view learning (TS-TCC/CMC variants)
+- [x] Multi-view learning (TS-TCC/CMC variants)
   - Action items: dual encoders (time/freq); cross-modal contrastive loss.
   - Options: shared vs separate backbones; momentum encoder.
-- [ ] Masked autoencoder for spectrograms (ViT-lite)
+- [x] Masked autoencoder for spectrograms (ViT-lite)
   - Action items: patchify; masking policy; lightweight decoder; recon loss.
   - Options: channel-wise vs time-freq masking; conv-ViT hybrids.
-- [ ] Pretraining data pool
+- [x] Pretraining data pool
   - Action items: MOABB aggregation; normalization alignment; license notes.
   - Options: subject-agnostic vs subject-aware objectives.
-- [ ] Fine-tuning recipes
+- [x] Fine-tuning recipes
   - Action items: layer-wise LR decay; freezing policies; adapters.
 
 ### Phase 3 — Personalization + Domain Adaptation
