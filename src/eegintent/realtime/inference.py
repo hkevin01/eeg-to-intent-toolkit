@@ -1,3 +1,120 @@
+"""Sliding-window inference and smoothing for real-time EEG."""
+
+from __future__ import annotations
+
+import enum
+import time
+from dataclasses import dataclass
+from typing import Optional, Tuple
+
+import numpy as np
+
+
+class Backend(enum.Enum):
+    TORCHSCRIPT = "torchscript"
+    ONNX = "onnx"
+
+
+def _softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:
+    x = x - np.max(x, axis=axis, keepdims=True)
+    e = np.exp(x)
+    return e / np.sum(e, axis=axis, keepdims=True)
+
+
+@dataclass
+class SmoothingConfig:
+    avg_last: int = 3
+    refractory_ms: int = 500
+
+
+class SlidingWindowPredictor:
+    """Windowed inference with output smoothing and refractory logic."""
+
+    def __init__(
+        self,
+        model_path: str,
+        backend: Backend,
+        window_size: int,
+        step_size: int,
+        n_channels: int,
+        device: Optional[str] = None,
+        smoothing: Optional[SmoothingConfig] = None,
+    ) -> None:
+        self.model_path = model_path
+        self.backend = backend
+        self.window_size = int(window_size)
+        self.step_size = int(step_size)
+        self.n_channels = int(n_channels)
+        self.device = device
+        self.smoothing = smoothing or SmoothingConfig()
+        self._probs_hist: list[np.ndarray] = []
+        self._last_emit_ts: float = 0.0
+
+        if self.backend == Backend.TORCHSCRIPT:
+            import torch
+
+            self._model = torch.jit.load(model_path, map_location=device or "cpu")
+            self._model.eval()
+        elif self.backend == Backend.ONNX:
+            import onnxruntime as ort
+
+            providers = ["CPUExecutionProvider"]
+            self._ort = ort.InferenceSession(model_path, providers=providers)
+        else:  # pragma: no cover
+            raise ValueError(f"Unsupported backend: {backend}")
+
+    def _infer_torch(self, x: np.ndarray) -> np.ndarray:
+        import torch
+
+        with torch.no_grad():
+            xt = torch.from_numpy(x[None]).float()
+            if self.device:
+                xt = xt.to(self.device)
+                self._model.to(self.device)
+            logits = self._model(xt)
+            probs = torch.softmax(logits, dim=-1).cpu().numpy()[0]
+        return probs
+
+    def _infer_onnx(self, x: np.ndarray) -> np.ndarray:
+        inp_name = self._ort.get_inputs()[0].name  # type: ignore[attr-defined]
+        out_name = self._ort.get_outputs()[0].name  # type: ignore[attr-defined]
+        x_ = x.astype(np.float32)[None]
+        out = self._ort.run([out_name], {inp_name: x_})[0]
+        if out.ndim == 2:
+            out = out[0]
+        return _softmax(out, axis=-1)
+
+    def _infer(self, x: np.ndarray) -> np.ndarray:
+        if self.backend == Backend.TORCHSCRIPT:
+            return self._infer_torch(x)
+        return self._infer_onnx(x)
+
+    def process_stream(
+        self, data: np.ndarray, timestamps: np.ndarray
+    ) -> Tuple[Optional[int], Optional[np.ndarray]]:
+        """Process incoming samples and return (predicted_class, probs) when ready.
+
+        Accumulates windows based on step_size; returns None when insufficient data.
+        """
+        n = data.shape[0]
+        if n < self.window_size:
+            return None, None
+        # Use last full window
+        x = data[-self.window_size :]
+        probs = self._infer(x)
+        self._probs_hist.append(probs)
+        if len(self._probs_hist) > self.smoothing.avg_last:
+            self._probs_hist.pop(0)
+        avg = np.mean(np.stack(self._probs_hist, axis=0), axis=0)
+        pred = int(np.argmax(avg))
+
+        now = float(timestamps[-1]) if timestamps.size else time.time()
+        if (now - self._last_emit_ts) * 1000.0 < self.smoothing.refractory_ms:
+            return None, avg
+        self._last_emit_ts = now
+        return pred, avg
+
+
 """Real-time inference engine with sliding windows and temporal smoothing."""
 
 from __future__ import annotations

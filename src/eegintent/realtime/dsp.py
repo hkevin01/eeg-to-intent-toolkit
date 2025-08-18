@@ -1,3 +1,122 @@
+"""Streaming-friendly DSP filters for real-time EEG."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Optional, Tuple
+
+import numpy as np
+
+try:  # optional SciPy
+    from scipy.signal import butter, iirnotch, lfilter
+except Exception:  # pragma: no cover - scipy optional
+    butter = None  # type: ignore
+    iirnotch = None  # type: ignore
+    lfilter = None  # type: ignore
+
+
+@dataclass
+class IIRBandpass:
+    fs: float
+    low: float
+    high: float
+    order: int = 4
+    _b: Optional[np.ndarray] = None
+    _a: Optional[np.ndarray] = None
+    _zi: Optional[np.ndarray] = None
+
+    def __post_init__(self) -> None:
+        if butter is None:
+            raise RuntimeError("scipy is required for IIRBandpass")
+        nyq = 0.5 * self.fs
+        low = self.low / nyq
+        high = self.high / nyq
+        self._b, self._a = butter(self.order, [low, high], btype="bandpass")
+
+    def reset(self, n_channels: int) -> None:
+        from scipy.signal import lfilter_zi  # type: ignore
+
+        zi = lfilter_zi(self._b, self._a)  # type: ignore[arg-type]
+        self._zi = np.tile(zi[:, None], (1, n_channels))
+
+    def process(self, x: np.ndarray) -> np.ndarray:
+        assert self._b is not None and self._a is not None
+        if lfilter is None:
+            return x
+        if self._zi is None:
+            self.reset(x.shape[1])
+        y, self._zi = lfilter(self._b, self._a, x, axis=0, zi=self._zi)
+        return y
+
+
+@dataclass
+class NotchFilter:
+    fs: float
+    freq: float = 50.0
+    q: float = 30.0
+    _b: Optional[np.ndarray] = None
+    _a: Optional[np.ndarray] = None
+    _zi: Optional[np.ndarray] = None
+
+    def __post_init__(self) -> None:
+        if iirnotch is None:
+            raise RuntimeError("scipy is required for NotchFilter")
+        w0 = self.freq / (self.fs / 2.0)
+        self._b, self._a = iirnotch(w0, self.q)
+
+    def reset(self, n_channels: int) -> None:
+        from scipy.signal import lfilter_zi  # type: ignore
+
+        zi = lfilter_zi(self._b, self._a)  # type: ignore[arg-type]
+        self._zi = np.tile(zi[:, None], (1, n_channels))
+
+    def process(self, x: np.ndarray) -> np.ndarray:
+        if lfilter is None:
+            return x
+        if self._zi is None:
+            self.reset(x.shape[1])
+        y, self._zi = lfilter(self._b, self._a, x, axis=0, zi=self._zi)
+        return y
+
+
+@dataclass
+class AdaptiveNoiseGate:
+    """Simple amplitude/RMS-based noise gate to suppress bursts.
+
+    If RMS in a sliding window exceeds a multiple of the median RMS, scale down.
+    """
+
+    window: int = 256
+    ratio: float = 3.0
+    min_scale: float = 0.3
+
+    def process(self, x: np.ndarray) -> np.ndarray:
+        if x.shape[0] < self.window:
+            return x
+        y = x.copy()
+        w = self.window
+        rms = np.sqrt(np.mean(y[-w:] ** 2, axis=0) + 1e-8)
+        med = np.median(rms)
+        if med <= 0:
+            return y
+        scale = np.clip(self.ratio * med / (rms + 1e-8), self.min_scale, 1.0)
+        y[-w:] *= scale
+        return y
+
+
+class StreamingPipeline:
+    """Compose multiple processors with .process(x) API."""
+
+    def __init__(self, *ops) -> None:
+        self.ops = list(ops)
+
+    def process(self, x: np.ndarray) -> np.ndarray:
+        y = x
+        for op in self.ops:
+            y = op.process(y)
+        return y
+
+
 """Real-time DSP filters and processing for EEG signals."""
 
 from __future__ import annotations
