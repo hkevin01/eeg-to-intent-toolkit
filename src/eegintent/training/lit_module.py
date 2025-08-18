@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import pytorch_lightning as pl
 import torch
@@ -18,12 +19,9 @@ class LitClassifier(pl.LightningModule):
     def __init__(
         self,
         backbone: nn.Module,
-        lr: float = 1e-3,
         n_classes: int = 2,
-        use_wandb: bool = False,
-        use_mlflow: bool = False,
-        use_personalization: bool = False,
-        personalization_layer: nn.Module | None = None,
+        lr: float = 1e-3,
+        options: dict[str, Any] | None = None,
     ) -> None:
         super().__init__()
         # avoid pickling the module twice
@@ -33,12 +31,17 @@ class LitClassifier(pl.LightningModule):
         self.criterion = nn.CrossEntropyLoss()
         self.train_acc = MulticlassAccuracy(num_classes=n_classes)
         self.val_acc = MulticlassAccuracy(num_classes=n_classes)
-        self.use_wandb = use_wandb
-        self.use_mlflow = use_mlflow
-        self.use_personalization = use_personalization
-        self.personalization_layer = personalization_layer
+        opts = options or {}
+        self.use_wandb = bool(opts.get("use_wandb", False))
+        self.use_mlflow = bool(opts.get("use_mlflow", False))
+        self.use_personalization = bool(opts.get("use_personalization", False))
+        self.personalization_layer = opts.get("personalization_layer")
 
-    def forward(self, x: torch.Tensor, subject_ids: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        subject_ids: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         if (
             self.use_personalization
             and self.personalization_layer is not None
@@ -47,9 +50,9 @@ class LitClassifier(pl.LightningModule):
             x = self.personalization_layer(x, subject_ids)
         return self.backbone(x)
 
-    def training_step(self, batch, batch_idx):  # type: ignore[override]
-        three = 3
-        if isinstance(batch, (list, tuple)) and len(batch) == three:
+    def training_step(self, batch, _):  # type: ignore[override]
+        has_sids = 3
+        if len(batch) == has_sids:
             x, y, sids = batch
             logits = self(x, sids)
         else:
@@ -62,9 +65,9 @@ class LitClassifier(pl.LightningModule):
         self.log("train/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
         return loss
 
-    def validation_step(self, batch, batch_idx):  # type: ignore[override]
-        three = 3
-        if isinstance(batch, (list, tuple)) and len(batch) == three:
+    def validation_step(self, batch, _):  # type: ignore[override]
+        has_sids = 3
+        if len(batch) == has_sids:
             x, y, sids = batch
             logits = self(x, sids)
         else:

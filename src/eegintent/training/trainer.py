@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Tuple
+from typing import Any
 
 import pytorch_lightning as pl
 import torch
@@ -9,36 +9,47 @@ from torch.utils.data import DataLoader, Dataset, TensorDataset
 from ..models.eegnet import EEGNet
 from .lit_module import LitClassifier
 
+# Optional loggers
+try:  # pragma: no cover - optional dependency
+    from pytorch_lightning.loggers import (
+        MLFlowLogger,  # type: ignore
+        WandbLogger,  # type: ignore
+    )
+except ImportError:  # pragma: no cover
+    MLFlowLogger = None  # type: ignore
+    WandbLogger = None  # type: ignore
 
-def make_trainer(config: Dict) -> Tuple[pl.Trainer, LitClassifier]:
+
+def make_trainer(config: dict[str, Any]) -> tuple[pl.Trainer, LitClassifier]:
     n_channels = config.get("n_channels", 8)
     n_classes = config.get("n_classes", 2)
     lr = config.get("lr", 1e-3)
     use_wandb = bool(config.get("use_wandb", False))
     use_mlflow = bool(config.get("use_mlflow", False))
 
-    model = EEGNet(n_channels=n_channels, n_classes=n_classes)
+    # Allow an external backbone to be supplied; otherwise create
+    # a default EEGNet.
+    backbone = config.get("backbone")
+    if backbone is None:
+        backbone = EEGNet(n_channels=n_channels, n_classes=n_classes)
+
     lit = LitClassifier(
-        model, lr=lr, n_classes=n_classes, use_wandb=use_wandb, use_mlflow=use_mlflow
+        backbone,
+        n_classes=n_classes,
+        lr=lr,
+        options={
+            "use_wandb": use_wandb,
+            "use_mlflow": use_mlflow,
+            "use_personalization": bool(config.get("use_personalization", False)),
+            "personalization_layer": config.get("personalization_layer"),
+        },
     )
 
     loggers = []
-    if use_wandb:
-        try:
-            from pytorch_lightning.loggers import WandbLogger  # type: ignore
-
-            loggers.append(WandbLogger(project=config.get("wandb_project", "eegintent")))
-        except Exception:
-            pass
-    if use_mlflow:
-        try:
-            from pytorch_lightning.loggers import MLFlowLogger  # type: ignore
-
-            loggers.append(
-                MLFlowLogger(experiment_name=config.get("mlflow_experiment", "eegintent"))
-            )
-        except Exception:
-            pass
+    if use_wandb and WandbLogger is not None:
+        loggers.append(WandbLogger(project=config.get("wandb_project", "eegintent")))
+    if use_mlflow and MLFlowLogger is not None:
+        loggers.append(MLFlowLogger(experiment_name=config.get("mlflow_experiment", "eegintent")))
 
     trainer = pl.Trainer(
         max_epochs=config.get("max_epochs", 1),
@@ -48,8 +59,13 @@ def make_trainer(config: Dict) -> Tuple[pl.Trainer, LitClassifier]:
     return trainer, lit
 
 
-class TensorDatasetWithSubject(Dataset[tuple[torch.Tensor, torch.Tensor, torch.Tensor]]):
-    def __init__(self, x: torch.Tensor, y: torch.Tensor, subject_ids: torch.Tensor):
+class TensorDatasetWithSubject(Dataset):
+    def __init__(
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        subject_ids: torch.Tensor,
+    ):
         assert len(x) == len(y) == len(subject_ids)
         self.x = x
         self.y = y
